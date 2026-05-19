@@ -1,23 +1,56 @@
 // src/pages/api/generate.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import Anthropic from "@anthropic-ai/sdk";
 import { buildItineraryPrompt } from "@/lib/prompt";
 import type { TripFormData, ItineraryData } from "@/lib/types";
-
-const res = await fetch(
-  `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-  { method: "POST", body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) });
-
-    const rawText =
-      message.content[0].type === "text" ? message.content[0].text : "";
-
+ 
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+ 
+  const form: TripFormData = req.body;
+ 
+  if (!form.city || !form.country || !form.startDate || !form.endDate) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+ 
+  try {
+    // ── 1. Gemini AI — core itinerary (always runs) ────────────
+    const prompt = buildItineraryPrompt(form);
+ 
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+        }),
+      }
+    );
+ 
+    if (!geminiRes.ok) {
+      throw new Error(`Gemini API error: ${geminiRes.status} ${geminiRes.statusText}`);
+    }
+ 
+    const geminiData = await geminiRes.json();
+    const rawText: string =
+      geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+ 
+    if (!rawText) {
+      throw new Error("Empty response from Gemini");
+    }
+ 
     let jsonStr = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
     const firstBrace = jsonStr.indexOf("{");
     const lastBrace = jsonStr.lastIndexOf("}");
     if (firstBrace > -1) jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
-
+ 
     const itinerary: ItineraryData = JSON.parse(jsonStr);
-
+ 
     // ── 2. OpenWeather (optional enrichment) ──────────────────
     if (process.env.OPENWEATHER_API_KEY) {
       try {
@@ -43,7 +76,7 @@ const res = await fetch(
         // Weather enrichment failed silently — non-critical
       }
     }
-
+ 
     // ── 3. Ticketmaster events (optional enrichment) ───────────
     if (process.env.TICKETMASTER_API_KEY) {
       try {
@@ -52,7 +85,7 @@ const res = await fetch(
         );
         const tmData = await tmRes.json();
         const tmEvents = tmData?._embedded?.events ?? [];
-
+ 
         for (const ev of tmEvents) {
           const existing = itinerary.events.find(
             (e) => e.name.toLowerCase() === ev.name.toLowerCase()
@@ -60,7 +93,10 @@ const res = await fetch(
           if (!existing) {
             itinerary.events.unshift({
               name: ev.name,
-              type: ev.classifications?.[0]?.segment?.name === "Music" ? "concert" : "festival",
+              type:
+                ev.classifications?.[0]?.segment?.name === "Music"
+                  ? "concert"
+                  : "festival",
               when: ev.dates?.start?.localDate ?? form.startDate,
               description: ev.info ?? ev.pleaseNote ?? "",
               price: ev.priceRanges
@@ -75,7 +111,7 @@ const res = await fetch(
         // Ticketmaster enrichment failed silently
       }
     }
-
+ 
     // ── 4. Google Places restaurant ratings (optional) ────────
     // Kept server-side to protect API key
     if (process.env.GOOGLE_PLACES_API_KEY) {
@@ -95,7 +131,7 @@ const res = await fetch(
         // Google Places enrichment failed silently
       }
     }
-
+ 
     return res.status(200).json(itinerary);
   } catch (err) {
     console.error("[generate] Error:", err);
