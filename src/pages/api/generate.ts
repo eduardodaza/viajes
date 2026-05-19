@@ -6,8 +6,7 @@ import type { TripFormData, ItineraryData } from "@/lib/types";
 
 const res = await fetch(
   `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-  { method: "POST", body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }
-);
+  { method: "POST", body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) });
 
     const rawText =
       message.content[0].type === "text" ? message.content[0].text : "";
