@@ -4,31 +4,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { buildItineraryPrompt } from "@/lib/prompt";
 import type { TripFormData, ItineraryData } from "@/lib/types";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  const form: TripFormData = req.body;
-
-  if (!form.city || !form.country || !form.startDate || !form.endDate) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
-
-  try {
-    // ── 1. Claude AI — core itinerary (always runs) ────────────
-    const prompt = buildItineraryPrompt(form);
-
-    const message = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
-      messages: [{ role: "user", content: prompt }],
-    });
+const res = await fetch(
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+  { method: "POST", body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }
+);
 
     const rawText =
       message.content[0].type === "text" ? message.content[0].text : "";
