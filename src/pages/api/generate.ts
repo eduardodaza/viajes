@@ -69,37 +69,56 @@ export default async function handler(
     }
 
     // ── 2. Booking.com via RapidAPI (hotels) ───────────────────
-    if (process.env.RAPIDAPI_KEY) {
+    const rapidKey = process.env.RAPIDAPI_KEY;
+    console.log("[Booking] RAPIDAPI_KEY present:", !!rapidKey);
+
+    if (rapidKey) {
       try {
-        // Step 1: get destination ID
-        const destRes = await fetch(
-          `https://booking-com15.p.rapidapi.com/api/v1/hotels/searchDestination?query=${encodeURIComponent(form.city)}`,
-          {
-            headers: {
-              "x-rapidapi-key": process.env.RAPIDAPI_KEY,
-              "x-rapidapi-host": "booking-com15.p.rapidapi.com",
-            },
-          }
-        );
-        const destData = await destRes.json();
+        // Step 1: buscar destino
+        const destUrl = `https://booking-com15.p.rapidapi.com/api/v1/hotels/searchDestination?query=${encodeURIComponent(form.city)}`;
+        console.log("[Booking] destUrl:", destUrl);
+
+        const destRes = await fetch(destUrl, {
+          headers: {
+            "x-rapidapi-key": rapidKey,
+            "x-rapidapi-host": "booking-com15.p.rapidapi.com",
+          },
+        });
+
+        const destRaw = await destRes.text();
+        console.log("[Booking] destStatus:", destRes.status);
+        console.log("[Booking] destRaw:", destRaw.slice(0, 500));
+
+        const destData = JSON.parse(destRaw);
         const destId = destData?.data?.[0]?.dest_id;
         const destType = destData?.data?.[0]?.dest_type ?? "city";
+        console.log("[Booking] destId:", destId, "destType:", destType);
 
         if (destId) {
-          // Step 2: search hotels
-          const hotelRes = await fetch(
-            `https://booking-com15.p.rapidapi.com/api/v1/hotels/searchHotels?dest_id=${destId}&dest_type=${destType}&checkin_date=${form.startDate}&checkout_date=${form.endDate}&adults_number=${form.travelers}&room_number=1&units=metric&currency_code=USD&languagecode=en-us&filter_by_currency=USD&page_number=1&include_adjacency=true`,
-            {
-              headers: {
-                "x-rapidapi-key": process.env.RAPIDAPI_KEY,
-                "x-rapidapi-host": "booking-com15.p.rapidapi.com",
-              },
-            }
-          );
-          const hotelData = await hotelRes.json();
-          const rawHotels = hotelData?.data?.hotels ?? [];
+          // Step 2: buscar hoteles
+          const hotelUrl = `https://booking-com15.p.rapidapi.com/api/v1/hotels/searchHotels?dest_id=${destId}&dest_type=${destType}&checkin_date=${form.startDate}&checkout_date=${form.endDate}&adults_number=${form.travelers}&room_number=1&units=metric&currency_code=USD&languagecode=en-us&filter_by_currency=USD&page_number=1&include_adjacency=true`;
+          console.log("[Booking] hotelUrl:", hotelUrl);
 
-          // Map budget to star filter
+          const hotelRes = await fetch(hotelUrl, {
+            headers: {
+              "x-rapidapi-key": rapidKey,
+              "x-rapidapi-host": "booking-com15.p.rapidapi.com",
+            },
+          });
+
+          const hotelRaw = await hotelRes.text();
+          console.log("[Booking] hotelStatus:", hotelRes.status);
+          console.log("[Booking] hotelRaw:", hotelRaw.slice(0, 800));
+
+          const hotelData = JSON.parse(hotelRaw);
+          const rawHotels = hotelData?.data?.hotels ?? [];
+          console.log("[Booking] rawHotels count:", rawHotels.length);
+
+          if (rawHotels.length > 0) {
+            console.log("[Booking] first hotel keys:", JSON.stringify(Object.keys(rawHotels[0])));
+            console.log("[Booking] first hotel property:", JSON.stringify(rawHotels[0]?.property ?? rawHotels[0]).slice(0, 500));
+          }
+
           const minStars: Record<string, number> = {
             economico: 0, moderado: 2, premium: 3, lujo: 4,
           };
@@ -110,49 +129,36 @@ export default async function handler(
             .filter((h: any) => (h.property?.propertyClass ?? 0) >= min)
             .slice(0, 5)
             .map((h: any) => {
-              // booking-com15 devuelve el id como hotelId y la foto como photoUrls (array)
-              // La URL correcta de Booking usa el countryCode + nombre, así que usamos
-              // el deeplink directo si existe, o construimos la URL de búsqueda
-              const hotelId = h.property?.id ?? h.hotelId ?? "";
-              const countryCode = (form.country ?? "").toLowerCase().slice(0, 2);
-              const bookingUrl = h.property?.blockIds?.[0]
-                ? `https://www.booking.com/hotel/${countryCode}/${hotelId}.html`
-                : `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(form.city)}&checkin=${form.startDate}&checkout=${form.endDate}&group_adults=${form.travelers}`;
-
+              const p = h.property ?? h;
+              const hotelId = p?.id ?? p?.hotelId ?? "";
+              const bookingUrl = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(form.city)}&checkin=${form.startDate}&checkout=${form.endDate}&group_adults=${form.travelers}`;
               return {
-                name: h.property?.name ?? "Hotel",
-                stars: h.property?.propertyClass ?? 0,
-                reviewScore: h.property?.reviewScore ?? 0,
-                // reviewCount puede venir como reviewCount o reviewScoreWord
-                reviewCount: h.property?.reviewCount ?? 0,
-                pricePerNight: h.property?.priceBreakdown?.grossPrice?.value
-                  ? Math.round(h.property.priceBreakdown.grossPrice.value).toString()
+                name: p?.name ?? "Hotel",
+                stars: p?.propertyClass ?? 0,
+                reviewScore: p?.reviewScore ?? 0,
+                reviewCount: p?.reviewCount ?? 0,
+                pricePerNight: p?.priceBreakdown?.grossPrice?.value
+                  ? Math.round(p.priceBreakdown.grossPrice.value).toString()
                   : "N/A",
-                currency: h.property?.priceBreakdown?.grossPrice?.currency ?? "USD",
-                // wishlistName no es la dirección — usar qualityClass o el nombre de la ciudad
-                address: h.property?.accuratePropertyClass
-                  ?? h.property?.wishlistName
-                  ?? form.city,
+                currency: p?.priceBreakdown?.grossPrice?.currency ?? "USD",
+                address: p?.address ?? p?.wishlistName ?? form.city,
                 url: bookingUrl,
-                // photoUrls es un array en esta API
-                photoUrl: Array.isArray(h.property?.photoUrls)
-                  ? h.property.photoUrls[0]
-                  : (h.property?.photoUrls ?? undefined),
-                distanceFromCenter: h.property?.distanceToCC
-                  ? `${parseFloat(h.property.distanceToCC).toFixed(1)} km from center`
+                photoUrl: Array.isArray(p?.photoUrls) ? p.photoUrls[0] : (p?.photoUrls ?? undefined),
+                distanceFromCenter: p?.distanceToCC
+                  ? `${parseFloat(p.distanceToCC).toFixed(1)} km from center`
                   : undefined,
               };
             });
 
+          console.log("[Booking] mapped hotels count:", hotels.length);
           if (hotels.length > 0) itinerary.hotels = hotels;
         }
       } catch (bookingErr) {
-        // Booking enrichment failed silently — non-critical
-        console.warn("[generate] Booking enrichment failed:", bookingErr);
+        console.error("[Booking] ERROR:", bookingErr);
       }
     }
 
-    // ── 3. OpenWeather (optional enrichment) ──────────────────
+    // ── 3. OpenWeather ─────────────────────────────────────────
     if (process.env.OPENWEATHER_API_KEY) {
       try {
         const geoRes = await fetch(
@@ -173,12 +179,10 @@ export default async function handler(
             };
           }
         }
-      } catch {
-        // Weather enrichment failed silently — non-critical
-      }
+      } catch { }
     }
 
-    // ── 4. Ticketmaster events (optional enrichment) ───────────
+    // ── 4. Ticketmaster ────────────────────────────────────────
     if (process.env.TICKETMASTER_API_KEY) {
       try {
         const tmRes = await fetch(
@@ -186,11 +190,8 @@ export default async function handler(
         );
         const tmData = await tmRes.json();
         const tmEvents = tmData?._embedded?.events ?? [];
-
         for (const ev of tmEvents) {
-          const existing = itinerary.events.find(
-            (e) => e.name.toLowerCase() === ev.name.toLowerCase()
-          );
+          const existing = itinerary.events.find(e => e.name.toLowerCase() === ev.name.toLowerCase());
           if (!existing) {
             itinerary.events.unshift({
               name: ev.name,
@@ -203,12 +204,10 @@ export default async function handler(
             });
           }
         }
-      } catch {
-        // Ticketmaster enrichment failed silently
-      }
+      } catch { }
     }
 
-    // ── 5. Google Places restaurant ratings (optional) ────────
+    // ── 5. Google Places ───────────────────────────────────────
     if (process.env.GOOGLE_PLACES_API_KEY) {
       try {
         for (const resto of itinerary.restaurants.slice(0, 4)) {
@@ -222,9 +221,7 @@ export default async function handler(
             if (place.formatted_address) resto.address = place.formatted_address;
           }
         }
-      } catch {
-        // Google Places enrichment failed silently
-      }
+      } catch { }
     }
 
     return res.status(200).json(itinerary);
