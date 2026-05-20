@@ -109,27 +109,46 @@ export default async function handler(
             .filter((h: any) => (h.property?.reviewScore ?? 0) >= 6)
             .filter((h: any) => (h.property?.propertyClass ?? 0) >= min)
             .slice(0, 5)
-            .map((h: any) => ({
-              name: h.property?.name ?? "Hotel",
-              stars: h.property?.propertyClass ?? 0,
-              reviewScore: h.property?.reviewScore ?? 0,
-              reviewCount: h.property?.reviewCount ?? 0,
-              pricePerNight: h.property?.priceBreakdown?.grossPrice?.value
-                ? Math.round(h.property.priceBreakdown.grossPrice.value).toString()
-                : "N/A",
-              currency: h.property?.priceBreakdown?.grossPrice?.currency ?? "USD",
-              address: h.property?.wishlistName ?? form.city,
-              url: `https://www.booking.com/hotel/${h.property?.id}.html`,
-              photoUrl: h.property?.photoUrls?.[0] ?? undefined,
-              distanceFromCenter: h.property?.distanceToCC
-                ? `${h.property.distanceToCC} km from center`
-                : undefined,
-            }));
+            .map((h: any) => {
+              // booking-com15 devuelve el id como hotelId y la foto como photoUrls (array)
+              // La URL correcta de Booking usa el countryCode + nombre, así que usamos
+              // el deeplink directo si existe, o construimos la URL de búsqueda
+              const hotelId = h.property?.id ?? h.hotelId ?? "";
+              const countryCode = (form.country ?? "").toLowerCase().slice(0, 2);
+              const bookingUrl = h.property?.blockIds?.[0]
+                ? `https://www.booking.com/hotel/${countryCode}/${hotelId}.html`
+                : `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(form.city)}&checkin=${form.startDate}&checkout=${form.endDate}&group_adults=${form.travelers}`;
+
+              return {
+                name: h.property?.name ?? "Hotel",
+                stars: h.property?.propertyClass ?? 0,
+                reviewScore: h.property?.reviewScore ?? 0,
+                // reviewCount puede venir como reviewCount o reviewScoreWord
+                reviewCount: h.property?.reviewCount ?? 0,
+                pricePerNight: h.property?.priceBreakdown?.grossPrice?.value
+                  ? Math.round(h.property.priceBreakdown.grossPrice.value).toString()
+                  : "N/A",
+                currency: h.property?.priceBreakdown?.grossPrice?.currency ?? "USD",
+                // wishlistName no es la dirección — usar qualityClass o el nombre de la ciudad
+                address: h.property?.accuratePropertyClass
+                  ?? h.property?.wishlistName
+                  ?? form.city,
+                url: bookingUrl,
+                // photoUrls es un array en esta API
+                photoUrl: Array.isArray(h.property?.photoUrls)
+                  ? h.property.photoUrls[0]
+                  : (h.property?.photoUrls ?? undefined),
+                distanceFromCenter: h.property?.distanceToCC
+                  ? `${parseFloat(h.property.distanceToCC).toFixed(1)} km from center`
+                  : undefined,
+              };
+            });
 
           if (hotels.length > 0) itinerary.hotels = hotels;
         }
-      } catch {
+      } catch (bookingErr) {
         // Booking enrichment failed silently — non-critical
+        console.warn("[generate] Booking enrichment failed:", bookingErr);
       }
     }
 
