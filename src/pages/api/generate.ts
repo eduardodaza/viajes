@@ -78,8 +78,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         );
         const destData = await destRes.json();
-        const destId   = destData?.data?.[0]?.dest_id;
-        const destType = destData?.data?.[0]?.search_type?.toUpperCase() ?? "CITY";
+        // Buscar específicamente dest_type "city", no distrito ni región
+        const cityResult = destData?.data?.find((d: any) => d.dest_type === "city") ?? destData?.data?.[0];
+        const destId   = cityResult?.dest_id;
+        const destType = "CITY";
 
         if (destId) {
           // Parámetros correctos según la API: arrival_date, departure_date, adults
@@ -114,8 +116,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const min = minStars[form.budget] ?? 0;
 
           const hotels: Hotel[] = rawHotels
-            .filter((h: any) => (h.property?.reviewScore ?? 0) >= 6)
+            .filter((h: any) => (h.property?.reviewScore ?? 0) >= 5)
             .filter((h: any) => (h.property?.propertyClass ?? 0) >= min)
+            .sort((a: any, b: any) => {
+              const priceA = a.property?.priceBreakdown?.grossPrice?.value ?? 999999;
+              const priceB = b.property?.priceBreakdown?.grossPrice?.value ?? 999999;
+              return priceA - priceB;
+            })
             .slice(0, 5)
             .map((h: any) => {
               const p = h.property ?? h;
