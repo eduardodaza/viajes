@@ -38,10 +38,7 @@ async function callGroq(prompt: string, maxTokens: number): Promise<string> {
   return text;
 }
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -68,56 +65,48 @@ export default async function handler(
       itinerary = JSON.parse(fixedJson);
     }
 
-    // ── 2. Booking.com via RapidAPI (hotels) ───────────────────
-    const rapidKey = process.env.RAPIDAPI_KEY;
-    console.log("[Booking] RAPIDAPI_KEY present:", !!rapidKey);
-
-    if (rapidKey) {
+    // ── 2. Booking.com via RapidAPI ────────────────────────────
+    if (process.env.RAPIDAPI_KEY) {
       try {
-        // Step 1: buscar destino
-        const destUrl = `https://booking-com15.p.rapidapi.com/api/v1/hotels/searchDestination?query=${encodeURIComponent(form.city)}`;
-        console.log("[Booking] destUrl:", destUrl);
-
-        const destRes = await fetch(destUrl, {
-          headers: {
-            "x-rapidapi-key": rapidKey,
-            "x-rapidapi-host": "booking-com15.p.rapidapi.com",
-          },
-        });
-
-        const destRaw = await destRes.text();
-        console.log("[Booking] destStatus:", destRes.status);
-        console.log("[Booking] destRaw:", destRaw.slice(0, 500));
-
-        const destData = JSON.parse(destRaw);
-        const destId = destData?.data?.[0]?.dest_id;
-        const destType = destData?.data?.[0]?.dest_type ?? "city";
-        console.log("[Booking] destId:", destId, "destType:", destType);
-
-        if (destId) {
-          // Step 2: buscar hoteles
-          const hotelUrl = `https://booking-com15.p.rapidapi.com/api/v1/hotels/searchHotels?dest_id=${destId}&dest_type=${destType}&checkin_date=${form.startDate}&checkout_date=${form.endDate}&adults_number=${form.travelers}&room_number=1&units=metric&currency_code=USD&languagecode=en-us&filter_by_currency=USD&page_number=1&include_adjacency=true`;
-          console.log("[Booking] hotelUrl:", hotelUrl);
-
-          const hotelRes = await fetch(hotelUrl, {
+        const destRes = await fetch(
+          `https://booking-com15.p.rapidapi.com/api/v1/hotels/searchDestination?query=${encodeURIComponent(form.city)}`,
+          {
             headers: {
-              "x-rapidapi-key": rapidKey,
+              "x-rapidapi-key": process.env.RAPIDAPI_KEY,
               "x-rapidapi-host": "booking-com15.p.rapidapi.com",
             },
+          }
+        );
+        const destData = await destRes.json();
+        const destId   = destData?.data?.[0]?.dest_id;
+        const destType = destData?.data?.[0]?.search_type?.toUpperCase() ?? "CITY";
+
+        if (destId) {
+          // Parámetros correctos según la API: arrival_date, departure_date, adults
+          const params = new URLSearchParams({
+            dest_id:        destId,
+            search_type:    destType,
+            arrival_date:   form.startDate,
+            departure_date: form.endDate,
+            adults:         String(form.travelers),
+            room_qty:       "1",
+            units:          "metric",
+            currency_code:  "USD",
+            languagecode:   "en-us",
+            page_number:    "1",
           });
 
-          const hotelRaw = await hotelRes.text();
-          console.log("[Booking] hotelStatus:", hotelRes.status);
-          console.log("[Booking] hotelRaw:", hotelRaw.slice(0, 800));
-
-          const hotelData = JSON.parse(hotelRaw);
+          const hotelRes  = await fetch(
+            `https://booking-com15.p.rapidapi.com/api/v1/hotels/searchHotels?${params}`,
+            {
+              headers: {
+                "x-rapidapi-key": process.env.RAPIDAPI_KEY,
+                "x-rapidapi-host": "booking-com15.p.rapidapi.com",
+              },
+            }
+          );
+          const hotelData = await hotelRes.json();
           const rawHotels = hotelData?.data?.hotels ?? [];
-          console.log("[Booking] rawHotels count:", rawHotels.length);
-
-          if (rawHotels.length > 0) {
-            console.log("[Booking] first hotel keys:", JSON.stringify(Object.keys(rawHotels[0])));
-            console.log("[Booking] first hotel property:", JSON.stringify(rawHotels[0]?.property ?? rawHotels[0]).slice(0, 500));
-          }
 
           const minStars: Record<string, number> = {
             economico: 0, moderado: 2, premium: 3, lujo: 4,
@@ -130,8 +119,6 @@ export default async function handler(
             .slice(0, 5)
             .map((h: any) => {
               const p = h.property ?? h;
-              const hotelId = p?.id ?? p?.hotelId ?? "";
-              const bookingUrl = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(form.city)}&checkin=${form.startDate}&checkout=${form.endDate}&group_adults=${form.travelers}`;
               return {
                 name: p?.name ?? "Hotel",
                 stars: p?.propertyClass ?? 0,
@@ -141,20 +128,19 @@ export default async function handler(
                   ? Math.round(p.priceBreakdown.grossPrice.value).toString()
                   : "N/A",
                 currency: p?.priceBreakdown?.grossPrice?.currency ?? "USD",
-                address: p?.address ?? p?.wishlistName ?? form.city,
-                url: bookingUrl,
-                photoUrl: Array.isArray(p?.photoUrls) ? p.photoUrls[0] : (p?.photoUrls ?? undefined),
+                address: p?.address ?? form.city,
+                url: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(form.city)}&checkin=${form.startDate}&checkout=${form.endDate}&group_adults=${form.travelers}`,
+                photoUrl: Array.isArray(p?.photoUrls) ? p.photoUrls[0] : undefined,
                 distanceFromCenter: p?.distanceToCC
                   ? `${parseFloat(p.distanceToCC).toFixed(1)} km from center`
                   : undefined,
               };
             });
 
-          console.log("[Booking] mapped hotels count:", hotels.length);
           if (hotels.length > 0) itinerary.hotels = hotels;
         }
-      } catch (bookingErr) {
-        console.error("[Booking] ERROR:", bookingErr);
+      } catch {
+        // Booking enrichment failed silently
       }
     }
 
@@ -165,9 +151,9 @@ export default async function handler(
           `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(form.city + "," + form.country)}&limit=1&appid=${process.env.OPENWEATHER_API_KEY}`
         );
         const geoData = await geoRes.json();
-        if (geoData && geoData[0]) {
+        if (geoData?.[0]) {
           const { lat, lon } = geoData[0];
-          const wxRes = await fetch(
+          const wxRes  = await fetch(
             `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${process.env.OPENWEATHER_API_KEY}&units=metric&cnt=7`
           );
           const wxData = await wxRes.json();
@@ -185,14 +171,13 @@ export default async function handler(
     // ── 4. Ticketmaster ────────────────────────────────────────
     if (process.env.TICKETMASTER_API_KEY) {
       try {
-        const tmRes = await fetch(
+        const tmRes  = await fetch(
           `https://app.ticketmaster.com/discovery/v2/events.json?city=${encodeURIComponent(form.city)}&startDateTime=${form.startDate}T00:00:00Z&endDateTime=${form.endDate}T23:59:59Z&size=5&apikey=${process.env.TICKETMASTER_API_KEY}`
         );
         const tmData = await tmRes.json();
-        const tmEvents = tmData?._embedded?.events ?? [];
-        for (const ev of tmEvents) {
-          const existing = itinerary.events.find(e => e.name.toLowerCase() === ev.name.toLowerCase());
-          if (!existing) {
+        for (const ev of tmData?._embedded?.events ?? []) {
+          const exists = itinerary.events.find(e => e.name.toLowerCase() === ev.name.toLowerCase());
+          if (!exists) {
             itinerary.events.unshift({
               name: ev.name,
               type: ev.classifications?.[0]?.segment?.name === "Music" ? "concert" : "festival",
@@ -211,14 +196,14 @@ export default async function handler(
     if (process.env.GOOGLE_PLACES_API_KEY) {
       try {
         for (const resto of itinerary.restaurants.slice(0, 4)) {
-          const searchRes = await fetch(
+          const searchRes  = await fetch(
             `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(resto.name + " " + form.city)}&key=${process.env.GOOGLE_PLACES_API_KEY}`
           );
           const searchData = await searchRes.json();
-          const place = searchData?.results?.[0];
+          const place      = searchData?.results?.[0];
           if (place) {
-            if (place.rating) resto.rating = String(place.rating);
-            if (place.formatted_address) resto.address = place.formatted_address;
+            if (place.rating)             resto.rating  = String(place.rating);
+            if (place.formatted_address)  resto.address = place.formatted_address;
           }
         }
       } catch { }
