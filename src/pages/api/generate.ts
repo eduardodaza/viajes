@@ -78,16 +78,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         );
         const destData = await destRes.json();
-        // Buscar específicamente dest_type "city", no distrito ni región
         const cityResult = destData?.data?.find((d: any) => d.dest_type === "city") ?? destData?.data?.[0];
-        const destId   = cityResult?.dest_id;
-        const destType = "CITY";
+        const destId = cityResult?.dest_id;
 
         if (destId) {
-          // Parámetros correctos según la API: arrival_date, departure_date, adults
           const params = new URLSearchParams({
             dest_id:        destId,
-            search_type:    destType,
+            search_type:    "CITY",
             arrival_date:   form.startDate,
             departure_date: form.endDate,
             adults:         String(form.travelers),
@@ -98,7 +95,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             page_number:    "1",
           });
 
-          const hotelRes  = await fetch(
+          const hotelRes = await fetch(
             `https://booking-com15.p.rapidapi.com/api/v1/hotels/searchHotels?${params}`,
             {
               headers: {
@@ -108,23 +105,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
           );
           const hotelData = await hotelRes.json();
-          const rawHotels = hotelData?.data?.hotels ?? [];
+          const rawHotels: any[] = hotelData?.data?.hotels ?? [];
 
-          const minStars: Record<string, number> = {
-            economico: 0, moderado: 2, premium: 3, lujo: 4,
-          };
-          const min = minStars[form.budget] ?? 0;
-
+          // Solo filtrar por reviewScore mínimo — sin filtro de estrellas
+          // porque muchos buenos hostales/apartamentos tienen stars=0
+          // Ordenar por precio ascendente y tomar los 5 más baratos con buena nota
           const hotels: Hotel[] = rawHotels
-            .filter((h: any) => (h.property?.reviewScore ?? 0) >= 5)
-            .filter((h: any) => (h.property?.propertyClass ?? 0) >= min)
-            .sort((a: any, b: any) => {
-              const priceA = a.property?.priceBreakdown?.grossPrice?.value ?? 999999;
-              const priceB = b.property?.priceBreakdown?.grossPrice?.value ?? 999999;
-              return priceA - priceB;
+            .filter((h) => (h.property?.reviewScore ?? 0) >= 7)
+            .sort((a, b) => {
+              const pa = a.property?.priceBreakdown?.grossPrice?.value ?? 999999;
+              const pb = b.property?.priceBreakdown?.grossPrice?.value ?? 999999;
+              return pa - pb;
             })
             .slice(0, 5)
-            .map((h: any) => {
+            .map((h) => {
               const p = h.property ?? h;
               return {
                 name: p?.name ?? "Hotel",
@@ -136,7 +130,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                   : "N/A",
                 currency: p?.priceBreakdown?.grossPrice?.currency ?? "USD",
                 address: p?.address ?? form.city,
-                url: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(form.city)}&checkin=${form.startDate}&checkout=${form.endDate}&group_adults=${form.travelers}`,
+                url: (() => {
+                  const hotelId = h.hotel_id ?? p?.id ?? "";
+                  const cc = (p?.countryCode ?? "").toLowerCase();
+                  return hotelId url: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(form.city)}&checkin=${form.startDate}&checkout=${form.endDate}&group_adults=${form.travelers}`,url: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(form.city)}&checkin=${form.startDate}&checkout=${form.endDate}&group_adults=${form.travelers}`, cc
+                    ? `https://www.booking.com/hotel/${cc}/${hotelId}.html?checkin=${form.startDate}&checkout=${form.endDate}&group_adults=${form.travelers}`
+                    : `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(form.city)}&checkin=${form.startDate}&checkout=${form.endDate}&group_adults=${form.travelers}`;
+                })(),
                 photoUrl: Array.isArray(p?.photoUrls) ? p.photoUrls[0] : undefined,
                 distanceFromCenter: p?.distanceToCC
                   ? `${parseFloat(p.distanceToCC).toFixed(1)} km from center`
@@ -160,7 +160,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const geoData = await geoRes.json();
         if (geoData?.[0]) {
           const { lat, lon } = geoData[0];
-          const wxRes  = await fetch(
+          const wxRes = await fetch(
             `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${process.env.OPENWEATHER_API_KEY}&units=metric&cnt=7`
           );
           const wxData = await wxRes.json();
@@ -178,7 +178,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // ── 4. Ticketmaster ────────────────────────────────────────
     if (process.env.TICKETMASTER_API_KEY) {
       try {
-        const tmRes  = await fetch(
+        const tmRes = await fetch(
           `https://app.ticketmaster.com/discovery/v2/events.json?city=${encodeURIComponent(form.city)}&startDateTime=${form.startDate}T00:00:00Z&endDateTime=${form.endDate}T23:59:59Z&size=5&apikey=${process.env.TICKETMASTER_API_KEY}`
         );
         const tmData = await tmRes.json();
@@ -203,14 +203,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (process.env.GOOGLE_PLACES_API_KEY) {
       try {
         for (const resto of itinerary.restaurants.slice(0, 4)) {
-          const searchRes  = await fetch(
+          const searchRes = await fetch(
             `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(resto.name + " " + form.city)}&key=${process.env.GOOGLE_PLACES_API_KEY}`
           );
           const searchData = await searchRes.json();
-          const place      = searchData?.results?.[0];
+          const place = searchData?.results?.[0];
           if (place) {
-            if (place.rating)             resto.rating  = String(place.rating);
-            if (place.formatted_address)  resto.address = place.formatted_address;
+            if (place.rating) resto.rating = String(place.rating);
+            if (place.formatted_address) resto.address = place.formatted_address;
           }
         }
       } catch { }
