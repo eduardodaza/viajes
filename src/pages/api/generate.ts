@@ -38,6 +38,21 @@ async function callGroq(prompt: string, maxTokens: number): Promise<string> {
   return text;
 }
 
+function buildHotelUrl(
+  hotelId: string | number,
+  countryCode: string,
+  city: string,
+  startDate: string,
+  endDate: string,
+  travelers: number
+): string {
+  const cc = countryCode.toLowerCase();
+  if (hotelId && cc) {
+    return `https://www.booking.com/hotel/${cc}/${hotelId}.html?checkin=${startDate}&checkout=${endDate}&group_adults=${travelers}`;
+  }
+  return `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${startDate}&checkout=${endDate}&group_adults=${travelers}`;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -107,9 +122,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const hotelData = await hotelRes.json();
           const rawHotels: any[] = hotelData?.data?.hotels ?? [];
 
-          // Solo filtrar por reviewScore mínimo — sin filtro de estrellas
-          // porque muchos buenos hostales/apartamentos tienen stars=0
-          // Ordenar por precio ascendente y tomar los 5 más baratos con buena nota
           const hotels: Hotel[] = rawHotels
             .filter((h) => (h.property?.reviewScore ?? 0) >= 7)
             .sort((a, b) => {
@@ -119,26 +131,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             })
             .slice(0, 5)
             .map((h) => {
-              const p = h.property ?? h;
+              const p = h.property ?? {};
+              const hotelId = h.hotel_id ?? p.id ?? "";
+              const countryCode = p.countryCode ?? "";
               return {
-                name: p?.name ?? "Hotel",
-                stars: p?.propertyClass ?? 0,
-                reviewScore: p?.reviewScore ?? 0,
-                reviewCount: p?.reviewCount ?? 0,
-                pricePerNight: p?.priceBreakdown?.grossPrice?.value
+                name: p.name ?? "Hotel",
+                stars: p.propertyClass ?? 0,
+                reviewScore: p.reviewScore ?? 0,
+                reviewCount: p.reviewCount ?? 0,
+                pricePerNight: p.priceBreakdown?.grossPrice?.value
                   ? Math.round(p.priceBreakdown.grossPrice.value).toString()
                   : "N/A",
-                currency: p?.priceBreakdown?.grossPrice?.currency ?? "USD",
-                address: p?.address ?? form.city,
-                url: (() => {
-                  const hotelId = h.hotel_id ?? p?.id ?? "";
-                  const cc = (p?.countryCode ?? "").toLowerCase();
-                  return hotelId url: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(form.city)}&checkin=${form.startDate}&checkout=${form.endDate}&group_adults=${form.travelers}`,url: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(form.city)}&checkin=${form.startDate}&checkout=${form.endDate}&group_adults=${form.travelers}`, cc
-                    ? `https://www.booking.com/hotel/${cc}/${hotelId}.html?checkin=${form.startDate}&checkout=${form.endDate}&group_adults=${form.travelers}`
-                    : `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(form.city)}&checkin=${form.startDate}&checkout=${form.endDate}&group_adults=${form.travelers}`;
-                })(),
-                photoUrl: Array.isArray(p?.photoUrls) ? p.photoUrls[0] : undefined,
-                distanceFromCenter: p?.distanceToCC
+                currency: p.priceBreakdown?.grossPrice?.currency ?? "USD",
+                address: p.address ?? form.city,
+                url: buildHotelUrl(hotelId, countryCode, form.city, form.startDate, form.endDate, form.travelers),
+                photoUrl: Array.isArray(p.photoUrls) ? p.photoUrls[0] : undefined,
+                distanceFromCenter: p.distanceToCC
                   ? `${parseFloat(p.distanceToCC).toFixed(1)} km from center`
                   : undefined,
               };
