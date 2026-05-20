@@ -39,18 +39,15 @@ async function callGroq(prompt: string, maxTokens: number): Promise<string> {
 }
 
 function buildHotelUrl(
-  hotelId: string | number,
-  countryCode: string,
+  hotelName: string,
   city: string,
   startDate: string,
   endDate: string,
   travelers: number
 ): string {
-  const cc = countryCode.toLowerCase();
-  if (hotelId && cc) {
-    return `https://www.booking.com/hotel/${cc}/${hotelId}.html?checkin=${startDate}&checkout=${endDate}&group_adults=${travelers}`;
-  }
-  return `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${startDate}&checkout=${endDate}&group_adults=${travelers}`;
+  // Buscar por nombre exacto del hotel es más confiable que el ID numérico
+  const query = `${hotelName} ${city}`;
+  return `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(query)}&checkin=${startDate}&checkout=${endDate}&group_adults=${travelers}&selected_currency=USD`;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -144,7 +141,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                   : "N/A",
                 currency: p.priceBreakdown?.grossPrice?.currency ?? "USD",
                 address: p.address ?? form.city,
-                url: buildHotelUrl(hotelId, countryCode, form.city, form.startDate, form.endDate, form.travelers),
+                url: buildHotelUrl(p.name ?? "", form.city, form.startDate, form.endDate, form.travelers),
                 photoUrl: Array.isArray(p.photoUrls) ? p.photoUrls[0] : undefined,
                 distanceFromCenter: p.distanceToCC
                   ? `${parseFloat(p.distanceToCC).toFixed(1)} km from center`
