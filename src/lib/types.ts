@@ -13,6 +13,14 @@ export interface ItineraryItem {
   rating?: string;
   tip?: string;
   bookingUrl?: string;
+  wikidataDescription?: string;
+  viatorUrl?: string;
+  links?: {
+    googleMaps?: string;
+    tripAdvisor?: string;
+    wikipedia?: string;
+    viator?: string;
+  };
 }
 
 export interface ItineraryDay {
@@ -33,6 +41,12 @@ export interface Restaurant {
   source: string;
   bookingUrl?: string;
   address?: string;
+  links?: {
+    googleMaps?: string;
+    tripAdvisor?: string;
+    yelp?: string;
+    theFork?: string;
+  };
 }
 
 export interface Event {
@@ -43,6 +57,7 @@ export interface Event {
   price: string;
   venue?: string;
   ticketUrl?: string;
+  source?: string;
 }
 
 export interface SecurityAlert {
@@ -51,8 +66,6 @@ export interface SecurityAlert {
   description: string;
   tip: string;
 }
-
-// ─── Booking.com hotel type ────────────────────────────────────
 
 export interface Hotel {
   name: string;
@@ -84,6 +97,8 @@ export interface ItineraryData {
   events: Event[];
   alerts: SecurityAlert[];
   hotels?: Hotel[];
+  generatedBy?: string;
+  cityWikipediaExtract?: string;
 }
 
 // ─── Form / Input types ────────────────────────────────────────
