@@ -386,10 +386,32 @@ function RestaurantsPanel({ restaurants, locale }: { restaurants: ItineraryData[
     "$$$": t("premium", locale), "$$$$": t("lujo", locale),
   };
 
+  // Mostrar todos agrupados por tier; si el tier no coincide exactamente, mostrar igual
+  const all = restaurants ?? [];
+  const byTier: Record<string, typeof all> = { "$": [], "$$": [], "$$$": [], "$$$$": [], other: [] };
+  for (const r of all) {
+    const key = r.priceRange?.trim() as string;
+    if (byTier[key]) byTier[key].push(r);
+    else byTier["other"].push(r);
+  }
+  // Juntar "other" con "$" para no perder ninguno
+  byTier["$"] = [...byTier["$"], ...byTier["other"]];
+
+  const hasAny = all.length > 0;
+
+  if (!hasAny) {
+    return (
+      <div className="card" style={{ textAlign: "center", color: "#888", padding: "2rem" }}>
+        <div style={{ fontSize: 32, marginBottom: 8 }}>🍽️</div>
+        <div style={{ fontSize: 14 }}>No restaurant data available</div>
+      </div>
+    );
+  }
+
   return (
     <>
       {tiers.map(tier => {
-        const list = restaurants?.filter(r => r.priceRange === tier) ?? [];
+        const list = byTier[tier] ?? [];
         if (!list.length) return null;
         return (
           <div key={tier} className="card" style={{ marginBottom: 10 }}>
@@ -412,34 +434,28 @@ function RestaurantsPanel({ restaurants, locale }: { restaurants: ItineraryData[
                   {r.address && <div style={{ fontSize: 11, color: "#999", marginTop: 2 }}>🏠 {r.address}</div>}
 
                   {/* Links de restaurante */}
-                  {r.links && (
-                    <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                      {r.links.googleMaps && (
-                        <a href={r.links.googleMaps} target="_blank" rel="noopener noreferrer"
-                          style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #ddd", borderRadius: 6, textDecoration: "none", color: "#444", background: "#f9f9f9" }}>
-                          🗺 Maps
-                        </a>
-                      )}
-                      {r.links.tripAdvisor && (
-                        <a href={r.links.tripAdvisor} target="_blank" rel="noopener noreferrer"
-                          style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #ddd", borderRadius: 6, textDecoration: "none", color: "#444", background: "#f9f9f9" }}>
-                          ⭐ TripAdvisor
-                        </a>
-                      )}
-                      {r.links.yelp && (
-                        <a href={r.links.yelp} target="_blank" rel="noopener noreferrer"
-                          style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #ddd", borderRadius: 6, textDecoration: "none", color: "#444", background: "#f9f9f9" }}>
-                          🍴 Yelp
-                        </a>
-                      )}
-                      {r.links.theFork && (
-                        <a href={r.links.theFork} target="_blank" rel="noopener noreferrer"
-                          style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #00848a", borderRadius: 6, textDecoration: "none", color: "#00848a", background: "#f0fafa" }}>
-                          🍽 TheFork
-                        </a>
-                      )}
-                    </div>
-                  )}
+                  <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                    <a href={`https://www.google.com/maps/search/${encodeURIComponent(r.name + " " + r.zone)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #ddd", borderRadius: 6, textDecoration: "none", color: "#444", background: "#f9f9f9" }}>
+                      🗺 Maps
+                    </a>
+                    <a href={`https://www.tripadvisor.com/Search?q=${encodeURIComponent(r.name)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #ddd", borderRadius: 6, textDecoration: "none", color: "#444", background: "#f9f9f9" }}>
+                      ⭐ TripAdvisor
+                    </a>
+                    <a href={`https://www.yelp.com/search?find_desc=${encodeURIComponent(r.name)}&find_loc=${encodeURIComponent(r.zone ?? "")}`}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #ddd", borderRadius: 6, textDecoration: "none", color: "#444", background: "#f9f9f9" }}>
+                      🍴 Yelp
+                    </a>
+                    <a href={`https://www.thefork.com/search?searchQuery=${encodeURIComponent(r.name)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #00848a", borderRadius: 6, textDecoration: "none", color: "#00848a", background: "#f0fafa" }}>
+                      🍽 TheFork
+                    </a>
+                  </div>
                   {r.source && <div style={{ fontSize: 10, color: "#bbb", marginTop: 6 }}>via {r.source}</div>}
                 </div>
               ))}
