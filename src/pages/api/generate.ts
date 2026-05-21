@@ -38,14 +38,7 @@ async function callGroq(prompt: string, maxTokens: number): Promise<string> {
   return text;
 }
 
-function buildHotelUrl(
-  hotelName: string,
-  city: string,
-  startDate: string,
-  endDate: string,
-  travelers: number
-): string {
-  // Buscar por nombre exacto del hotel es más confiable que el ID numérico
+function buildHotelUrl(hotelName: string, city: string, startDate: string, endDate: string, travelers: number): string {
   const query = `${hotelName} ${city}`;
   return `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(query)}&checkin=${startDate}&checkout=${endDate}&group_adults=${travelers}&selected_currency=USD`;
 }
@@ -129,8 +122,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             .slice(0, 5)
             .map((h) => {
               const p = h.property ?? {};
-              const hotelId = h.hotel_id ?? p.id ?? "";
-              const countryCode = p.countryCode ?? "";
               return {
                 name: p.name ?? "Hotel",
                 stars: p.propertyClass ?? 0,
@@ -184,7 +175,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (process.env.TICKETMASTER_API_KEY) {
       try {
         const tmRes = await fetch(
-          `https://app.ticketmaster.com/discovery/v2/events.json?city=${encodeURIComponent(form.city)}&startDateTime=${form.startDate}T00:00:00Z&endDateTime=${form.endDate}T23:59:59Z&size=5&apikey=${process.env.TICKETMASTER_API_KEY}`
+          `https://app.ticketmaster.com/discovery/v2/events.json?city=${encodeURIComponent(form.city)}&startDateTime=${form.startDate}T00:00:00Z&endDateTime=${form.endDate}T23:59:59Z&size=8&apikey=${process.env.TICKETMASTER_API_KEY}`
         );
         const tmData = await tmRes.json();
         for (const ev of tmData?._embedded?.events ?? []) {
@@ -195,7 +186,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               type: ev.classifications?.[0]?.segment?.name === "Music" ? "concert" : "festival",
               when: ev.dates?.start?.localDate ?? form.startDate,
               description: ev.info ?? ev.pleaseNote ?? "",
-              price: ev.priceRanges ? `From €${ev.priceRanges[0].min}` : "See website",
+              price: ev.priceRanges ? `From $${ev.priceRanges[0].min}` : "See website",
               venue: ev._embedded?.venues?.[0]?.name ?? "",
               ticketUrl: ev.url ?? "",
             });
@@ -204,7 +195,87 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       } catch { }
     }
 
-    // ── 5. Google Places ───────────────────────────────────────
+    // ── 5. Eventbrite — eventos locales adicionales ────────────
+    if (process.env.EVENTBRITE_API_KEY) {
+      try {
+        const ebRes = await fetch(
+          `https://www.eventbriteapi.com/v3/events/search/?q=${encodeURIComponent(form.city)}&start_date.range_start=${form.startDate}T00:00:00Z&start_date.range_end=${form.endDate}T23:59:59Z&expand=venue&page_size=5&sort_by=date`,
+          {
+            headers: {
+              "Authorization": `Bearer ${process.env.EVENTBRITE_API_KEY}`,
+            },
+          }
+        );
+        const ebData = await ebRes.json();
+        for (const ev of ebData?.events ?? []) {
+          const evName = ev.name?.text ?? "";
+          if (!evName) continue;
+          const exists = itinerary.events.find(e => e.name.toLowerCase() === evName.toLowerCase());
+          if (!exists) {
+            itinerary.events.push({
+              name: evName,
+              type: ev.category_id === "103" ? "concert" : ev.category_id === "108" ? "sport" : "festival",
+              when: ev.start?.local?.split("T")[0] ?? form.startDate,
+              description: ev.description?.text?.slice(0, 150) ?? ev.summary ?? "",
+              price: ev.is_free ? "Free" : ev.ticket_availability?.minimum_ticket_price?.display ?? "See website",
+              venue: ev.venue?.name ?? "",
+              ticketUrl: ev.url ?? "",
+            });
+          }
+        }
+      } catch { }
+    }
+
+    // ── 6. Geoapify — puntos de interés reales ─────────────────
+    if (process.env.GEOAPIFY_API_KEY) {
+      try {
+        // Primero obtener coordenadas de la ciudad
+        const geoRes = await fetch(
+          `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(form.city + ", " + form.country)}&limit=1&apiKey=${process.env.GEOAPIFY_API_KEY}`
+        );
+        const geoData = await geoRes.json();
+        const coords = geoData?.features?.[0]?.geometry?.coordinates;
+
+        if (coords) {
+          const [lon, lat] = coords;
+          // Buscar atracciones turísticas reales
+          const poiRes = await fetch(
+            `https://api.geoapify.com/v2/places?categories=tourism.attraction,tourism.sights,entertainment.museum&filter=circle:${lon},${lat},5000&limit=6&apiKey=${process.env.GEOAPIFY_API_KEY}`
+          );
+          const poiData = await poiRes.json();
+          const places = poiData?.features ?? [];
+
+          // Agregar POIs reales al primer día si no están ya
+          if (places.length > 0 && itinerary.days?.[0]) {
+            for (const place of places.slice(0, 3)) {
+              const props = place.properties;
+              const name = props?.name;
+              if (!name) continue;
+              const alreadyIn = itinerary.days[0].items.some(
+                item => item.name.toLowerCase() === name.toLowerCase()
+              );
+              if (!alreadyIn) {
+                itinerary.days[0].items.push({
+                  id: `geo_${props.place_id?.slice(0, 8) ?? Math.random().toString(36).slice(2)}`,
+                  time: "18:00",
+                  type: "sight",
+                  name,
+                  description: props.datasource?.raw?.description ?? `${props.categories?.[0] ?? "Attraction"} in ${form.city}.`,
+                  duration: "1h",
+                  transport: "walking",
+                  transportTime: "varies",
+                  price: "$",
+                  rating: props.datasource?.raw?.rating ?? "",
+                  tip: props.website ? `Visit: ${props.website}` : "",
+                });
+              }
+            }
+          }
+        }
+      } catch { }
+    }
+
+    // ── 7. Google Places — ratings de restaurantes ─────────────
     if (process.env.GOOGLE_PLACES_API_KEY) {
       try {
         for (const resto of itinerary.restaurants.slice(0, 4)) {
