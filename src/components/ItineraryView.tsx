@@ -48,11 +48,11 @@ export default function ItineraryView({ data, locale, onReset }: Props) {
   }
 
   const tabs: { key: typeof tab; label: string }[] = [
-    { key: "days", label: `📅 ${t("days", locale)}` },
+    { key: "days",        label: `📅 ${t("days", locale)}` },
     { key: "restaurants", label: `🍽️ ${t("restaurants", locale)}` },
-    { key: "events", label: `🎭 ${t("events", locale)}` },
-    { key: "hotels", label: `🏨 Hotels` },
-    { key: "security", label: `🛡️ ${t("security", locale)}` },
+    { key: "events",      label: `🎭 ${t("events", locale)}` },
+    { key: "hotels",      label: `🏨 Hotels` },
+    { key: "security",    label: `🛡️ ${t("security", locale)}` },
   ];
 
   return (
@@ -74,6 +74,12 @@ export default function ItineraryView({ data, locale, onReset }: Props) {
         {data.summary && (
           <p style={{ fontSize: 13, color: "#555", lineHeight: 1.6, margin: "12px 0 0", paddingTop: 12, borderTop: "1px solid #f0efea" }}>
             {data.summary}
+          </p>
+        )}
+
+        {data.cityWikipediaExtract && (
+          <p style={{ fontSize: 12, color: "#888", lineHeight: 1.6, margin: "8px 0 0", fontStyle: "italic" }}>
+            {data.cityWikipediaExtract}
           </p>
         )}
 
@@ -127,17 +133,20 @@ export default function ItineraryView({ data, locale, onReset }: Props) {
           {data.events?.map((ev, i) => (
             <div key={i} style={{ padding: "10px 0", borderBottom: i < data.events.length - 1 ? "1px solid #f0efea" : "none", display: "flex", gap: 10 }}>
               <div style={{ width: 8, height: 8, borderRadius: "50%", background: ev.type === "concert" ? "#e85d26" : ev.type === "permanent" ? "#1a6b4a" : "#7f77dd", marginTop: 5, flexShrink: 0 }} />
-              <div>
+              <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a18" }}>{ev.name}</div>
                 <div style={{ fontSize: 12, color: "#3c3489", marginTop: 2 }}>📅 {ev.when} {ev.venue ? `· ${ev.venue}` : ""}</div>
+                {ev.source && <div style={{ fontSize: 10, color: "#aaa", marginTop: 1 }}>via {ev.source}</div>}
                 <div style={{ fontSize: 12, color: "#666", marginTop: 2, lineHeight: 1.5 }}>{ev.description}</div>
-                <span style={{ fontSize: 11, background: "#eeedfe", color: "#3c3489", padding: "2px 8px", borderRadius: 8, display: "inline-block", marginTop: 4 }}>{ev.price}</span>
-                {ev.ticketUrl && (
-                  <a href={ev.ticketUrl} target="_blank" rel="noopener noreferrer"
-                    style={{ fontSize: 11, marginLeft: 8, color: "#1a6b4a", textDecoration: "underline" }}>
-                    {t("bookNow", locale)} ↗
-                  </a>
-                )}
+                <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: 11, background: "#eeedfe", color: "#3c3489", padding: "2px 8px", borderRadius: 8 }}>{ev.price}</span>
+                  {ev.ticketUrl && (
+                    <a href={ev.ticketUrl} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 11, padding: "2px 10px", background: "#e85d26", color: "white", borderRadius: 8, textDecoration: "none" }}>
+                      🎟 {t("bookNow", locale)} ↗
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -155,21 +164,14 @@ export default function ItineraryView({ data, locale, onReset }: Props) {
               {data.hotels.map((hotel, i) => (
                 <div key={i} className="card" style={{ marginBottom: 10, display: "flex", gap: 12 }}>
                   {hotel.photoUrl && (
-                    <img
-                      src={hotel.photoUrl}
-                      alt={hotel.name}
-                      style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8, flexShrink: 0 }}
-                    />
+                    <img src={hotel.photoUrl} alt={hotel.name}
+                      style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8, flexShrink: 0 }} />
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                       <div style={{ fontSize: 14, fontWeight: 500, color: "#1a1a18" }}>{hotel.name}</div>
-                      <a
-                        href={hotel.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ fontSize: 11, padding: "4px 10px", background: "#1a6b4a", color: "white", borderRadius: 8, textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}
-                      >
+                      <a href={hotel.url} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: 11, padding: "4px 10px", background: "#1a6b4a", color: "white", borderRadius: 8, textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}>
                         {t("bookNow", locale)} ↗
                       </a>
                     </div>
@@ -215,7 +217,11 @@ export default function ItineraryView({ data, locale, onReset }: Props) {
           <h3 style={{ fontSize: 15, fontWeight: 500, marginBottom: 12 }}>🛡️ {t("security", locale)}</h3>
           {data.alerts?.map((al, i) => {
             const colors = { alto: "#e24b4a", medio: "#ef9f27", bajo: "#1a6b4a" };
-            const badges = { alto: { bg: "#fcebeb", c: "#a32d2d", label: t("riskHigh", locale) }, medio: { bg: "#faeeda", c: "#854f0b", label: t("riskMed", locale) }, bajo: { bg: "#e8f5ef", c: "#0f6e56", label: t("riskLow", locale) } };
+            const badges = {
+              alto: { bg: "#fcebeb", c: "#a32d2d", label: t("riskHigh", locale) },
+              medio: { bg: "#faeeda", c: "#854f0b", label: t("riskMed", locale) },
+              bajo: { bg: "#e8f5ef", c: "#0f6e56", label: t("riskLow", locale) },
+            };
             const b = badges[al.level];
             return (
               <div key={i} style={{ padding: "10px 0", borderBottom: i < data.alerts.length - 1 ? "1px solid #f0efea" : "none", display: "flex", gap: 10 }}>
@@ -262,11 +268,18 @@ export default function ItineraryView({ data, locale, onReset }: Props) {
           </div>
         </div>
       )}
+
+      {/* Generated by */}
+      {data.generatedBy && (
+        <div style={{ fontSize: 10, color: "#ccc", textAlign: "center", marginTop: 16 }}>
+          {data.generatedBy}
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Sub-components ────────────────────────────────────────────
+// ── DayCard ───────────────────────────────────────────────────
 
 function DayCard({ day, index, open, onToggle, edits, onEdit, locale }: {
   day: ItineraryDay; index: number; open: boolean;
@@ -290,6 +303,7 @@ function DayCard({ day, index, open, onToggle, edits, onEdit, locale }: {
         const edit = edits[item.id] ?? {};
         const name = edit.name ?? item.name;
         const bd = BADGE[item.type] ?? BADGE.sight;
+        const isSight = item.type === "sight" || item.type === "beach" || item.type === "event";
         return (
           <div key={item.id} className="tl-item">
             <div className="tl-time">{item.time}</div>
@@ -299,26 +313,60 @@ function DayCard({ day, index, open, onToggle, edits, onEdit, locale }: {
               </span>
               <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a18", marginBottom: 2 }}>{name}</div>
               <div style={{ fontSize: 12, color: "#666", lineHeight: 1.5 }}>{item.description}</div>
+
+              {/* Wikidata description */}
+              {item.wikidataDescription && (
+                <div style={{ fontSize: 11, color: "#777", marginTop: 4, fontStyle: "italic", lineHeight: 1.5 }}>
+                  📖 {item.wikidataDescription}
+                </div>
+              )}
+
               {edit.note && (
                 <div style={{ fontSize: 11, color: "#1a6b4a", marginTop: 4, padding: "4px 8px", background: "#e8f5ef", borderRadius: 6 }}>📝 {edit.note}</div>
               )}
               {item.tip && (
                 <div style={{ fontSize: 11, color: "#3c3489", marginTop: 4, padding: "3px 8px", background: "#eeedfe", borderRadius: 6 }}>💡 {item.tip}</div>
               )}
+
               <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
                 {item.duration && <span style={{ fontSize: 11, color: "#888" }}>⏱ {item.duration}</span>}
                 {item.transport && item.type !== "transport" && <span style={{ fontSize: 11, color: "#888" }}>🚶 {item.transport} {item.transportTime ?? ""}</span>}
                 {item.rating && <span style={{ fontSize: 11, color: "#854f0b" }}>★ {item.rating}</span>}
                 {item.price && <span style={{ fontSize: 11, color: "#1a6b4a", fontWeight: 500 }}>{item.price}</span>}
               </div>
-              {item.bookingUrl && (
-                <a href={item.bookingUrl} target="_blank" rel="noopener noreferrer"
-                  style={{ fontSize: 11, color: "#1a6b4a", textDecoration: "underline", display: "inline-block", marginTop: 4 }}>
-                  {t("bookNow", locale)} ↗
-                </a>
+
+              {/* Links para atracciones */}
+              {isSight && item.links && (
+                <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                  {item.links.googleMaps && (
+                    <a href={item.links.googleMaps} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #ddd", borderRadius: 6, textDecoration: "none", color: "#444", background: "#f9f9f9" }}>
+                      🗺 Maps
+                    </a>
+                  )}
+                  {item.links.tripAdvisor && (
+                    <a href={item.links.tripAdvisor} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #ddd", borderRadius: 6, textDecoration: "none", color: "#444", background: "#f9f9f9" }}>
+                      ⭐ TripAdvisor
+                    </a>
+                  )}
+                  {item.links.wikipedia && (
+                    <a href={item.links.wikipedia} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #ddd", borderRadius: 6, textDecoration: "none", color: "#444", background: "#f9f9f9" }}>
+                      📚 Wikipedia
+                    </a>
+                  )}
+                  {item.viatorUrl && (
+                    <a href={item.viatorUrl} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #e85d26", borderRadius: 6, textDecoration: "none", color: "#e85d26", background: "#fdf0eb" }}>
+                      🎫 Reservar tour
+                    </a>
+                  )}
+                </div>
               )}
+
               <button onClick={() => onEdit(item.id, name)}
-                style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #ede9e2", borderRadius: 6, background: "transparent", color: "#888", cursor: "pointer", marginTop: 6 }}>
+                style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #ede9e2", borderRadius: 6, background: "transparent", color: "#888", cursor: "pointer", marginTop: 8 }}>
                 ✏️ {t("customize", locale)}
               </button>
             </div>
@@ -329,9 +377,14 @@ function DayCard({ day, index, open, onToggle, edits, onEdit, locale }: {
   );
 }
 
+// ── RestaurantsPanel ──────────────────────────────────────────
+
 function RestaurantsPanel({ restaurants, locale }: { restaurants: ItineraryData["restaurants"]; locale: Locale }) {
   const tiers = ["$", "$$", "$$$", "$$$$"] as const;
-  const tierLabels: Record<string, string> = { "$": t("economico", locale), "$$": t("moderado", locale), "$$$": t("premium", locale), "$$$$": t("lujo", locale) };
+  const tierLabels: Record<string, string> = {
+    "$": t("economico", locale), "$$": t("moderado", locale),
+    "$$$": t("premium", locale), "$$$$": t("lujo", locale),
+  };
 
   return (
     <>
@@ -343,18 +396,51 @@ function RestaurantsPanel({ restaurants, locale }: { restaurants: ItineraryData[
             <h3 style={{ fontSize: 14, fontWeight: 500, marginBottom: 10 }}>
               {tier} · {tierLabels[tier]}
             </h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {list.map((r, i) => (
                 <div key={i} style={{ border: "1px solid #f0efea", borderRadius: 10, padding: "10px 12px" }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a18" }}>{r.name}</div>
-                  <div style={{ fontSize: 11, color: "#888", marginTop: 1 }}>{r.type}</div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-                    <span style={{ fontSize: 11, color: "#854f0b" }}>★ {r.rating}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a18" }}>{r.name}</div>
                     <span style={{ fontSize: 11, color: "#1a6b4a", fontWeight: 500 }}>{r.priceRange}</span>
                   </div>
+                  <div style={{ fontSize: 11, color: "#888", marginTop: 1 }}>{r.type}</div>
+                  <div style={{ display: "flex", gap: 10, marginTop: 4, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11, color: "#854f0b" }}>★ {r.rating}</span>
+                    {r.zone && <span style={{ fontSize: 11, color: "#888" }}>📍 {r.zone}</span>}
+                  </div>
                   {r.specialty && <div style={{ fontSize: 11, color: "#666", marginTop: 3 }}>✦ {r.specialty}</div>}
-                  {r.zone && <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>📍 {r.zone}</div>}
-                  {r.source && <div style={{ fontSize: 10, color: "#3c3489", marginTop: 3 }}>{r.source}</div>}
+                  {r.address && <div style={{ fontSize: 11, color: "#999", marginTop: 2 }}>🏠 {r.address}</div>}
+
+                  {/* Links de restaurante */}
+                  {r.links && (
+                    <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                      {r.links.googleMaps && (
+                        <a href={r.links.googleMaps} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #ddd", borderRadius: 6, textDecoration: "none", color: "#444", background: "#f9f9f9" }}>
+                          🗺 Maps
+                        </a>
+                      )}
+                      {r.links.tripAdvisor && (
+                        <a href={r.links.tripAdvisor} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #ddd", borderRadius: 6, textDecoration: "none", color: "#444", background: "#f9f9f9" }}>
+                          ⭐ TripAdvisor
+                        </a>
+                      )}
+                      {r.links.yelp && (
+                        <a href={r.links.yelp} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #ddd", borderRadius: 6, textDecoration: "none", color: "#444", background: "#f9f9f9" }}>
+                          🍴 Yelp
+                        </a>
+                      )}
+                      {r.links.theFork && (
+                        <a href={r.links.theFork} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: 10, padding: "2px 8px", border: "1px solid #00848a", borderRadius: 6, textDecoration: "none", color: "#00848a", background: "#f0fafa" }}>
+                          🍽 TheFork
+                        </a>
+                      )}
+                    </div>
+                  )}
+                  {r.source && <div style={{ fontSize: 10, color: "#bbb", marginTop: 6 }}>via {r.source}</div>}
                 </div>
               ))}
             </div>
